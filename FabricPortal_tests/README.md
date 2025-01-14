@@ -35,5 +35,3 @@ This guide provides instructions for deploying Kubernetes (k8s) clusters on FABR
 - If worker nodes fail to connect, check network configurations
 - Verify all required ports are open
 - Review logs for potential errors
-
-For more detailed information, refer to the [FABRIC example documentation](FABRIC_example).
