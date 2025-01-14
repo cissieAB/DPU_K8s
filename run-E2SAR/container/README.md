@@ -1,10 +1,10 @@
 # E2SAR Container Setup
 
-This directory contains the containerized version of E2SAR sender and receiver applications. The setup includes a script to easily start both containers with configurable parameters.
+This directory contains the containerized version of E2SAR sender and receiver applications using Docker Compose for easy deployment and configuration.
 
 ## Prerequisites
 
-- Docker installed and running
+- Docker and Docker Compose installed and running
 - The `e2sar-container` image built from the provided Dockerfile
 
 ## Building the Container
@@ -24,60 +24,62 @@ The build process will:
 
 You only need to build the container once unless you make changes to the Dockerfile or entrypoint scripts.
 
-## Quick Start
+## Running the Containers
 
-1. Make the start script executable:
+### Basic Usage
+
+1. Create a `.env` file with the required parameters:
 ```bash
-chmod +x start_containers.sh
+# Required parameters
+SENDER_IP=192.168.1.10
+RECEIVER_IP=192.168.1.11
+LB_IP=192.168.1.100
+
+# Optional parameters (showing defaults)
+MTU=9000
+RATE=10
+LENGTH=1000000
+NUM_EVENTS=10000
+BUF_SIZE=314572800
+DURATION=30
+PORT=19522
+THREADS=1
 ```
 
-2. Run the containers with minimum required parameters:
+2. Start the containers:
 ```bash
-./start_containers.sh \
-  --sender-ip <sender_ip> \
-  --receiver-ip <receiver_ip> \
-  --lb-ip <load_balancer_ip>
+docker-compose up -d
 ```
 
-## Configuration Options
+### Configuration Options
 
-The `start_containers.sh` script supports the following parameters:
+All configuration is done through environment variables, which can be set in the `.env` file or passed directly to docker-compose.
 
 | Parameter | Description | Default Value |
 |-----------|-------------|---------------|
-| --sender-ip | Sender IP address | Required |
-| --receiver-ip | Receiver IP address | Required |
-| --lb-ip | Load balancer IP address | Required |
-| --mtu | MTU size | 9000 |
-| --rate | Send rate | 10 |
-| --length | Message length | 1000000 |
-| --num-events | Number of events | 10000 |
-| --buf-size | Buffer size | 314572800 |
-| --duration | Test duration in seconds | 30 |
-| --port | Receiver port | 19522 |
-| --threads | Number of threads | 1 |
+| SENDER_IP | Sender IP address | localhost |
+| RECEIVER_IP | Receiver IP address | localhost |
+| LB_IP | Load balancer IP address | localhost |
+| MTU | MTU size | 9000 |
+| RATE | Send rate | 10 |
+| LENGTH | Message length | 1000000 |
+| NUM_EVENTS | Number of events | 10000 |
+| BUF_SIZE | Buffer size | 314572800 |
+| DURATION | Test duration in seconds | 30 |
+| PORT | Receiver port | 19522 |
+| THREADS | Number of threads | 1 |
 
-## Example Usage
+### Example Usage
 
-1. Basic usage with only required parameters:
+1. Start with custom parameters using environment variables:
 ```bash
-./start_containers.sh \
-  --sender-ip 192.168.1.10 \
-  --receiver-ip 192.168.1.11 \
-  --lb-ip 192.168.1.100
+SENDER_IP=192.168.1.10 RECEIVER_IP=192.168.1.11 LB_IP=192.168.1.100 docker-compose up -d
 ```
 
-2. Advanced usage with custom parameters:
+2. Start with custom parameters using a .env file:
 ```bash
-./start_containers.sh \
-  --sender-ip 192.168.1.10 \
-  --receiver-ip 192.168.1.11 \
-  --lb-ip 192.168.1.100 \
-  --mtu 9000 \
-  --rate 20 \
-  --length 2000000 \
-  --duration 60 \
-  --threads 4
+# Edit .env file with your parameters
+docker-compose up -d
 ```
 
 ## Container Management
@@ -85,19 +87,22 @@ The `start_containers.sh` script supports the following parameters:
 ### View Container Logs
 ```bash
 # View receiver logs
-docker logs e2sar-receiver
+docker-compose logs receiver
 
 # View sender logs
-docker logs e2sar-sender
+docker-compose logs sender
+
+# Follow logs
+docker-compose logs -f
 ```
 
 ### Stop and Remove Containers
 ```bash
 # Stop containers
-docker stop e2sar-sender e2sar-receiver
+docker-compose down
 
-# Remove containers
-docker rm e2sar-sender e2sar-receiver
+# Stop containers and remove volumes
+docker-compose down -v
 ```
 
 ## Network Configuration
