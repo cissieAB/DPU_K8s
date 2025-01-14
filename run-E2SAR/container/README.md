@@ -1,5 +1,4 @@
- 
- # E2SAR Container Setup
+# E2SAR Container Setup
 
 This directory contains the containerized version of E2SAR sender and receiver applications. The setup includes a script to easily start both containers with configurable parameters.
 
@@ -7,6 +6,23 @@ This directory contains the containerized version of E2SAR sender and receiver a
 
 - Docker installed and running
 - The `e2sar-container` image built from the provided Dockerfile
+
+## Building the Container
+
+Build the E2SAR container image from the Dockerfile in the current directory:
+
+```bash
+cd container/
+docker build -t e2sar-container .
+```
+
+The build process will:
+1. Use Ubuntu 22.04 as the base image
+2. Install required system dependencies
+3. Set up the E2SAR environment
+4. Copy the entrypoint scripts for both sender and receiver
+
+You only need to build the container once unless you make changes to the Dockerfile or entrypoint scripts.
 
 ## Quick Start
 
