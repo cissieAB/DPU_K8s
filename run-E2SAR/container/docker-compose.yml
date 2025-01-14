@@ -1,0 +1,26 @@
+version: '3'
+services:
+  sender:
+    image: e2sar-container
+    network_mode: host
+    entrypoint: /app/entrypoint-sender.sh
+    environment:
+      - URI=ejfats://token@lb_ip:18008/
+      - MTU=9000
+      - RATE=10
+      - LENGTH=1000000
+      - NUM_EVENTS=10000
+      - BUF_SIZE=314572800
+      - IP=sender_ip
+
+  receiver:
+    image: e2sar-container
+    network_mode: host
+    entrypoint: /app/entrypoint-receiver.sh
+    environment:
+      - URI=ejfats://token@lb_ip:18008/
+      - DURATION=30
+      - BUF_SIZE=314572800
+      - IP=receiver_ip
+      - PORT=19522
+      - THREADS=1

@@ -19,12 +19,14 @@ Contains Jupyter notebooks for testing the E2SAR Load Balancer on FABRIC testbed
 - Sender and receiver node configuration
 - Automated data transfer testing
 - Performance monitoring and evaluation tools
+- Containerized sender and receiver components
 
 ## Prerequisites
 - Access to JLab testbeds
 - FABRIC account and portal access (for FabricPortal_tests)
 - FABRIC account with FPGA permissions (for run-E2SAR tests)
 - Basic understanding of Kubernetes and DPUs
+- Docker installed (for running containerized components)
 
 ## Getting Started
 1. Choose the appropriate testbed directory based on your needs:
@@ -32,6 +34,9 @@ Contains Jupyter notebooks for testing the E2SAR Load Balancer on FABRIC testbed
    - Use `run-E2SAR` for Load Balancer testing
 2. Follow the README instructions in the specific directory
 3. Configure and deploy according to the provided scripts
+4. For E2SAR testing:
+   - Build and use Docker containers for sender/receiver components
+   - Follow container-specific instructions in run-E2SAR/container/
 
 ## Contributing
 For questions or contributions, please contact the project maintainers.
