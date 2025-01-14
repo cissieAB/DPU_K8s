@@ -13,13 +13,23 @@ Contains scripts and configurations for setting up a 2-node Kubernetes system on
 - Troubleshooting guides and best practices
 - Known issues and their solutions
 
+### [run-E2SAR](./run-E2SAR)
+Contains Jupyter notebooks for testing the E2SAR Load Balancer on FABRIC testbed with U280 FPGAs. Features include:
+- Load Balancer setup on U280 FPGA nodes
+- Sender and receiver node configuration
+- Automated data transfer testing
+- Performance monitoring and evaluation tools
+
 ## Prerequisites
 - Access to JLab testbeds
 - FABRIC account and portal access (for FabricPortal_tests)
+- FABRIC account with FPGA permissions (for run-E2SAR tests)
 - Basic understanding of Kubernetes and DPUs
 
 ## Getting Started
-1. Choose the appropriate testbed directory based on your needs
+1. Choose the appropriate testbed directory based on your needs:
+   - Use `FabricPortal_tests` for Kubernetes deployment
+   - Use `run-E2SAR` for Load Balancer testing
 2. Follow the README instructions in the specific directory
 3. Configure and deploy according to the provided scripts
 
