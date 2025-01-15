@@ -9,8 +9,9 @@ print_usage() {
     echo "  receiver  Start the E2SAR receiver container"
     echo ""
     echo "Options:"
-    echo "  --lb-ip IP         Load balancer IP address (required)"
+    echo "  --lb-ip IP         Load balancer IP address (optional)"
     echo "  --ip IP            Local IP address (required)"
+    echo "  --target-ip IP     Target IP address (required for direct mode)"
     echo "  --mtu SIZE         MTU size (sender only, default: 9000)"
     echo "  --rate RATE        Send rate (sender only, default: 10)"
     echo "  --length LEN       Message length (sender only, default: 1000000)"
@@ -19,6 +20,7 @@ print_usage() {
     echo "  --duration SEC     Test duration (receiver only, default: 30)"
     echo "  --port PORT        Receiver port (receiver only, default: 19522)"
     echo "  --threads NUM      Number of threads (receiver only, default: 1)"
+    echo "  --direct          Use direct mode without load balancer"
     echo "  -h, --help         Show this help message"
 }
 
@@ -33,6 +35,8 @@ PORT=19522
 THREADS=1
 LB_IP=""
 IP=""
+TARGET_IP=""
+DIRECT_MODE=false
 
 # Parse command line arguments
 COMMAND=$1
@@ -52,6 +56,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --ip)
             IP="$2"
+            shift 2
+            ;;
+        --target-ip)
+            TARGET_IP="$2"
             shift 2
             ;;
         --mtu)
@@ -86,6 +94,10 @@ while [[ $# -gt 0 ]]; do
             THREADS="$2"
             shift 2
             ;;
+        --direct)
+            DIRECT_MODE=true
+            shift
+            ;;
         -h|--help)
             print_usage
             exit 0
@@ -99,10 +111,33 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate required parameters
-if [[ -z "$LB_IP" || -z "$IP" ]]; then
-    echo "Error: --lb-ip and --ip are required parameters"
+if [[ -z "$IP" ]]; then
+    echo "Error: --ip is required"
     print_usage
     exit 1
+fi
+
+if [[ "$DIRECT_MODE" == true && -z "$TARGET_IP" ]]; then
+    echo "Error: --target-ip is required in direct mode"
+    print_usage
+    exit 1
+fi
+
+if [[ "$DIRECT_MODE" == false && -z "$LB_IP" ]]; then
+    echo "Error: --lb-ip is required when not in direct mode"
+    print_usage
+    exit 1
+fi
+
+# Construct URI based on mode
+if [[ "$DIRECT_MODE" == true ]]; then
+    if [[ "$COMMAND" == "sender" ]]; then
+        URI="ejfat://useless@10.10.10.10:1234/lb/1?data=${TARGET_IP}&sync=192.168.77.7:1234"
+    else
+        URI="ejfat://useless@10.10.10.10:1234/lb/1?data=${IP}&sync=192.168.77.7:1234"
+    fi
+else
+    URI="ejfats://token@${LB_IP}:18008/"
 fi
 
 # Start the appropriate container
@@ -111,7 +146,7 @@ if [[ "$COMMAND" == "sender" ]]; then
     docker run -d \
         --network host \
         --name e2sar-sender \
-        -e URI="ejfats://token@${LB_IP}:18008/" \
+        -e URI="$URI" \
         -e MTU="$MTU" \
         -e RATE="$RATE" \
         -e LENGTH="$LENGTH" \
@@ -124,7 +159,7 @@ else
     docker run -d \
         --network host \
         --name e2sar-receiver \
-        -e URI="ejfats://token@${LB_IP}:18008/" \
+        -e URI="$URI" \
         -e DURATION="$DURATION" \
         -e BUF_SIZE="$BUF_SIZE" \
         -e IP="$IP" \
