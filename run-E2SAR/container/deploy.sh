@@ -11,7 +11,7 @@ print_usage() {
     echo "Options:"
     echo "  --lb-ip IP         Load balancer IP address (optional)"
     echo "  --ip IP            Local IP address (required)"
-    echo "  --target-ip IP     Target IP address (required for direct mode)"
+    echo "  --target-ip IP     Target IP address (required for sender in direct mode)"
     echo "  --mtu SIZE         MTU size (sender only, default: 9000)"
     echo "  --rate RATE        Send rate (sender only, default: 10)"
     echo "  --length LEN       Message length (sender only, default: 1000000)"
@@ -117,8 +117,8 @@ if [[ -z "$IP" ]]; then
     exit 1
 fi
 
-if [[ "$DIRECT_MODE" == true && -z "$TARGET_IP" ]]; then
-    echo "Error: --target-ip is required in direct mode"
+if [[ "$DIRECT_MODE" == true && "$COMMAND" == "sender" && -z "$TARGET_IP" ]]; then
+    echo "Error: --target-ip is required for sender in direct mode"
     print_usage
     exit 1
 fi
