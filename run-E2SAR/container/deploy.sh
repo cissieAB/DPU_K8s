@@ -153,6 +153,7 @@ if [[ "$COMMAND" == "sender" ]]; then
         -e NUM_EVENTS="$NUM_EVENTS" \
         -e BUF_SIZE="$BUF_SIZE" \
         -e IP="$IP" \
+        -e DIRECT_MODE="$DIRECT_MODE" \
         e2sar-container /app/entrypoint-sender.sh
 else
     echo "Starting E2SAR receiver..."
@@ -165,5 +166,6 @@ else
         -e IP="$IP" \
         -e PORT="$PORT" \
         -e THREADS="$THREADS" \
+        -e DIRECT_MODE="$DIRECT_MODE" \
         e2sar-container /app/entrypoint-receiver.sh
 fi 
