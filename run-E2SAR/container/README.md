@@ -1,108 +1,104 @@
 # E2SAR Container Setup
 
-This directory contains the containerized version of E2SAR sender and receiver applications using Docker Compose for easy deployment and configuration.
+This directory contains the containerized version of E2SAR sender and receiver applications. The same container image can be used to run either sender or receiver components on different machines.
 
 ## Prerequisites
 
-- Docker and Docker Compose installed and running
-- The `e2sar-container` image built from the provided Dockerfile
+- Docker installed and running
+- Network connectivity between sender, receiver, and load balancer machines
 
 ## Building the Container
 
-Build the E2SAR container image from the Dockerfile in the current directory:
+Build the E2SAR container image from the Dockerfile:
 
 ```bash
 cd container/
-docker build -t e2sar-container .
+docker build --build-arg GITHUB_TOKEN=your_token_here -t e2sar-container .
 ```
 
-The build process will:
-1. Use Ubuntu 22.04 as the base image
-2. Install required system dependencies
-3. Set up the E2SAR environment
-4. Copy the entrypoint scripts for both sender and receiver
+Note: You'll need a GitHub token with 'repo' permissions to clone the repositories during build.
 
-You only need to build the container once unless you make changes to the Dockerfile or entrypoint scripts.
+## Deployment
 
-## Running the Containers
+The `deploy.sh` script provides a convenient way to deploy either sender or receiver components on different machines.
 
 ### Basic Usage
 
-1. Create a `.env` file with the required parameters:
+1. Make the deployment script executable:
 ```bash
-# Required parameters
-SENDER_IP=192.168.1.10
-RECEIVER_IP=192.168.1.11
-LB_IP=192.168.1.100
-
-# Optional parameters (showing defaults)
-MTU=9000
-RATE=10
-LENGTH=1000000
-NUM_EVENTS=10000
-BUF_SIZE=314572800
-DURATION=30
-PORT=19522
-THREADS=1
+chmod +x deploy.sh
 ```
 
-2. Start the containers:
+2. Start the sender (on sender machine):
 ```bash
-docker-compose up -d
+./deploy.sh sender --lb-ip <load_balancer_ip> --ip <sender_ip>
+```
+
+3. Start the receiver (on receiver machine):
+```bash
+./deploy.sh receiver --lb-ip <load_balancer_ip> --ip <receiver_ip>
 ```
 
 ### Configuration Options
 
-All configuration is done through environment variables, which can be set in the `.env` file or passed directly to docker-compose.
+The script supports the following parameters:
 
-| Parameter | Description | Default Value |
-|-----------|-------------|---------------|
-| SENDER_IP | Sender IP address | localhost |
-| RECEIVER_IP | Receiver IP address | localhost |
-| LB_IP | Load balancer IP address | localhost |
-| MTU | MTU size | 9000 |
-| RATE | Send rate | 10 |
-| LENGTH | Message length | 1000000 |
-| NUM_EVENTS | Number of events | 10000 |
-| BUF_SIZE | Buffer size | 314572800 |
-| DURATION | Test duration in seconds | 30 |
-| PORT | Receiver port | 19522 |
-| THREADS | Number of threads | 1 |
+| Parameter | Description | Default | Component |
+|-----------|-------------|---------|-----------|
+| --lb-ip | Load balancer IP address | Required | Both |
+| --ip | Local IP address | Required | Both |
+| --mtu | MTU size | 9000 | Sender |
+| --rate | Send rate | 10 | Sender |
+| --length | Message length | 1000000 | Sender |
+| --num-events | Number of events | 10000 | Sender |
+| --buf-size | Buffer size | 314572800 | Both |
+| --duration | Test duration in seconds | 30 | Receiver |
+| --port | Receiver port | 19522 | Receiver |
+| --threads | Number of threads | 1 | Receiver |
 
 ### Example Usage
 
-1. Start with custom parameters using environment variables:
+1. Start sender with custom parameters:
 ```bash
-SENDER_IP=192.168.1.10 RECEIVER_IP=192.168.1.11 LB_IP=192.168.1.100 docker-compose up -d
+./deploy.sh sender \
+  --lb-ip 192.168.1.100 \
+  --ip 192.168.1.10 \
+  --rate 20 \
+  --length 2000000 \
+  --num-events 20000
 ```
 
-2. Start with custom parameters using a .env file:
+2. Start receiver with custom parameters:
 ```bash
-# Edit .env file with your parameters
-docker-compose up -d
+./deploy.sh receiver \
+  --lb-ip 192.168.1.100 \
+  --ip 192.168.1.11 \
+  --threads 4 \
+  --duration 60
 ```
 
 ## Container Management
 
 ### View Container Logs
 ```bash
-# View receiver logs
-docker-compose logs receiver
-
 # View sender logs
-docker-compose logs sender
+docker logs e2sar-sender
+
+# View receiver logs
+docker logs e2sar-receiver
 
 # Follow logs
-docker-compose logs -f
+docker logs -f e2sar-sender
+docker logs -f e2sar-receiver
 ```
 
 ### Stop and Remove Containers
 ```bash
 # Stop containers
-docker-compose down
+docker stop e2sar-sender e2sar-receiver
 
-# Stop containers and remove volumes
-docker-compose down -v
+# Remove containers
+docker rm e2sar-sender e2sar-receiver
 ```
 
 ## Network Configuration
