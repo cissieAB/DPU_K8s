@@ -32,3 +32,15 @@ sudo systemctl daemon-reload
 sudo systemctl restart docker
 
 }  2>&1 | tee -a config_worker_node.log
+
+
+# Run the following command to start the worker node.
+
+join_cmd=$1
+
+{
+
+yes | sudo kubeadm reset
+
+sudo ${join_cmd}
+}  2>&1 | tee -a start_worker_node.log
