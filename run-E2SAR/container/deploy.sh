@@ -168,4 +168,4 @@ else
         -e THREADS="$THREADS" \
         -e DIRECT_MODE="$DIRECT_MODE" \
         e2sar-container /app/entrypoint-receiver.sh
-fi 
+fi
