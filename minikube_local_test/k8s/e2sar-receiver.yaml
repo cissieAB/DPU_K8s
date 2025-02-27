@@ -1,0 +1,58 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: e2sar-receiver
+spec:
+  type: NodePort
+  ports:
+    - port: 19522
+      targetPort: 19522
+      nodePort: 30522
+  selector:
+    app: e2sar-receiver
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: e2sar-receiver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: e2sar-receiver
+  template:
+    metadata:
+      labels:
+        app: e2sar-receiver
+    spec:
+      containers:
+      - name: e2sar-receiver
+        image: e2sar-container:latest
+        imagePullPolicy: Never
+        command: ["/app/entrypoint-receiver.sh"]
+        env:
+        - name: URI
+          value: "ejfat://useless@10.10.10.10:1234/lb/1?data=$(POD_IP)&sync=192.168.77.7:1234"
+        - name: DURATION
+          value: "30"
+        - name: BUF_SIZE
+          value: "314572800"
+        - name: PORT
+          value: "19522"
+        - name: THREADS
+          value: "1"
+        - name: DIRECT_MODE
+          value: "true"
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        ports:
+        - containerPort: 19522
+        resources:
+          limits:
+            cpu: "2"
+            memory: "2Gi"
+          requests:
+            cpu: "1"
+            memory: "1Gi" 
