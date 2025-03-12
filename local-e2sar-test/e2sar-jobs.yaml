@@ -1,0 +1,290 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: e2sar-perf
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shared-ip-pvc
+  namespace: e2sar-perf
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: logs-pvc
+  namespace: e2sar-perf
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Mi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: e2sar-network-policy
+  namespace: e2sar-perf
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - {}  # Allow all ingress traffic
+  egress:
+  - {}  # Allow all egress traffic
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: e2sar-receiver
+  namespace: e2sar-perf
+spec:
+  ttlSecondsAfterFinished: 100
+  template:
+    metadata:
+      labels:
+        app: e2sar-receiver
+      annotations:
+        kubernetes.io/ingress-bandwidth: "100M"
+        kubernetes.io/egress-bandwidth: "100M"
+    spec:
+      restartPolicy: Never
+      volumes:
+      - name: shared-ip
+        persistentVolumeClaim:
+          claimName: shared-ip-pvc
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: logs-pvc
+      - name: shared-logs
+        emptyDir: {}
+      initContainers:
+      - name: save-ip
+        image: busybox:1.28
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          # Save the pod IP to a file
+          POD_IP=$(hostname -i)
+          echo "RECEIVER_IP=$POD_IP" > /shared-ip/receiver-ip.env
+          echo "Saved receiver IP: $POD_IP"
+        volumeMounts:
+        - name: shared-ip
+          mountPath: /shared-ip
+      containers:
+      - name: receiver
+        image: jlabtsai/e2sar-container:latest
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          # Run the receiver and tee the output to a log file
+          /app/entrypoint-receiver.sh 2>&1 | tee /shared-logs/receiver.log
+        env:
+        - name: IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: URI
+          value: "ejfat://useless@10.10.10.10:1234/lb/1?data=$(IP):19522&sync=192.168.77.7:1234"
+        - name: DURATION
+          value: "300"
+        - name: BUF_SIZE
+          value: "32768"
+        - name: PORT
+          value: "19522"
+        - name: THREADS
+          value: "1"
+        - name: DIRECT_MODE
+          value: "true"
+        volumeMounts:
+        - name: shared-logs
+          mountPath: /shared-logs
+      - name: log-saver
+        image: busybox:1.28
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          # Wait for the receiver to finish
+          while [ ! -f /shared-logs/receiver.log ]; do
+            echo "Waiting for receiver log file..."
+            sleep 5
+          done
+          
+          # Copy the log file to the persistent volume
+          mkdir -p /logs/receiver
+          cp /shared-logs/receiver.log /logs/receiver/
+          echo "Receiver logs saved to persistent volume"
+          
+          # Keep the container running until the main container exits
+          while true; do
+            if [ ! -f /proc/1/status ]; then
+              echo "Main container exited, exiting log-saver"
+              break
+            fi
+            sleep 10
+            # Copy the latest logs
+            cp /shared-logs/receiver.log /logs/receiver/
+          done
+        volumeMounts:
+        - name: shared-logs
+          mountPath: /shared-logs
+        - name: logs-volume
+          mountPath: /logs
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: e2sar-sender
+  namespace: e2sar-perf
+spec:
+  ttlSecondsAfterFinished: 100
+  template:
+    metadata:
+      labels:
+        app: e2sar-sender
+      annotations:
+        kubernetes.io/ingress-bandwidth: "100M"
+        kubernetes.io/egress-bandwidth: "100M"
+    spec:
+      restartPolicy: Never
+      volumes:
+      - name: shared-ip
+        persistentVolumeClaim:
+          claimName: shared-ip-pvc
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: logs-pvc
+      - name: shared-logs
+        emptyDir: {}
+      initContainers:
+      - name: wait-for-receiver-ip
+        image: busybox:1.28
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          # Wait for the receiver IP file to exist
+          until [ -f /shared-ip/receiver-ip.env ]; do
+            echo "Waiting for receiver IP file..."
+            sleep 5
+          done
+          cat /shared-ip/receiver-ip.env
+          echo "Found receiver IP file"
+        volumeMounts:
+        - name: shared-ip
+          mountPath: /shared-ip
+      containers:
+      - name: sender
+        image: jlabtsai/e2sar-container:latest
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          source /shared-ip/receiver-ip.env
+          echo "Using receiver IP: $RECEIVER_IP"
+          export IP="0.0.0.0"
+          export URI="ejfat://useless@10.10.10.10:1234/lb/1?data=${RECEIVER_IP}:19522&sync=192.168.77.7:1234"
+          export MTU="512"
+          export RATE="0.1"
+          export LENGTH="512"
+          export NUM_EVENTS="10000"
+          export BUF_SIZE="32768"
+          export DIRECT_MODE="true"
+          /app/entrypoint-sender.sh 2>&1 | tee /shared-logs/sender.log
+        volumeMounts:
+        - name: shared-ip
+          mountPath: /shared-ip
+        - name: shared-logs
+          mountPath: /shared-logs
+      - name: log-saver
+        image: busybox:1.28
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          # Wait for the sender to finish
+          while [ ! -f /shared-logs/sender.log ]; do
+            echo "Waiting for sender log file..."
+            sleep 5
+          done
+          
+          # Copy the log file to the persistent volume
+          mkdir -p /logs/sender
+          cp /shared-logs/sender.log /logs/sender/
+          echo "Sender logs saved to persistent volume"
+          
+          # Keep the container running until the main container exits
+          while true; do
+            if [ ! -f /proc/1/status ]; then
+              echo "Main container exited, exiting log-saver"
+              break
+            fi
+            sleep 10
+            # Copy the latest logs
+            cp /shared-logs/sender.log /logs/sender/
+          done
+        volumeMounts:
+        - name: shared-logs
+          mountPath: /shared-logs
+        - name: logs-volume
+          mountPath: /logs
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: e2sar-log-viewer
+  namespace: e2sar-perf
+spec:
+  ttlSecondsAfterFinished: 604800  # Keep for 7 days
+  template:
+    metadata:
+      labels:
+        app: e2sar-log-viewer
+    spec:
+      restartPolicy: Never
+      volumes:
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: logs-pvc
+      containers:
+      - name: log-viewer
+        image: busybox:1.28
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "Waiting for logs to be available..."
+          # Wait for the sender and receiver logs to be available
+          until [ -f /logs/sender/sender.log ] && [ -f /logs/receiver/receiver.log ]; do
+            echo "Waiting for log files..."
+            sleep 10
+          done
+          
+          echo "Logs are available. You can view them with:"
+          echo "kubectl exec -it -n e2sar-perf $(kubectl get pods -n e2sar-perf -l job-name=e2sar-log-viewer -o name | cut -d/ -f2) -- cat /logs/sender/sender.log"
+          echo "kubectl exec -it -n e2sar-perf $(kubectl get pods -n e2sar-perf -l job-name=e2sar-log-viewer -o name | cut -d/ -f2) -- cat /logs/receiver/receiver.log"
+          
+          # Keep the pod running for 7 days to allow log access
+          sleep 604800
+        volumeMounts:
+        - name: logs-volume
+          mountPath: /logs 
