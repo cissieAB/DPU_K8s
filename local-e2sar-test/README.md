@@ -20,6 +20,34 @@ The configuration uses persistent volumes to:
 - `e2sar-jobs.yaml`: Improved configuration using Jobs with log persistence and shared volume for IP discovery
 - `e2sar-headless.yaml`: Alternative implementation using a headless service for IP discovery (recommended)
 
+## Setting Up the KinD Cluster
+
+Before running the tests, you need to set up a Kubernetes in Docker (KinD) cluster using the provided configuration:
+
+```bash
+# Create a KinD cluster using the provided configuration
+kind create cluster --config kind-config.yaml
+
+# Verify the cluster is running
+kubectl cluster-info --context kind-e2sar-cluster
+
+# Check the nodes in the cluster
+kubectl get nodes --context kind-e2sar-cluster
+```
+
+The `kind-config.yaml` file configures a cluster with:
+- One control-plane node
+- Two worker nodes with custom labels (`node=worker1` and `node=worker2`)
+- IPv4 networking with pod subnet `10.244.0.0/16` and service subnet `10.96.0.0/16`
+
+You can verify the node labels with:
+
+```bash
+kubectl get nodes --show-labels --context kind-e2sar-cluster
+```
+
+This is useful for performance testing to ensure sender and receiver pods run on different physical nodes.
+
 ## Running the Tests
 
 To run the E2SAR performance tests:
