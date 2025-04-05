@@ -1,0 +1,549 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: e2sar-perf
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: logs-pv
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 100Mi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Delete
+  hostPath:
+    path: "/tmp/e2sar-logs"
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: logs-pvc
+  namespace: e2sar-perf
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: e2sar-receiver-svc
+  namespace: e2sar-perf
+spec:
+  clusterIP: None  # This makes it a headless service
+  selector:
+    app: e2sar-receiver
+  ports:
+  - port: 19522
+    targetPort: 19522
+    protocol: TCP
+    name: tcp
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: e2sar-network-policy
+  namespace: e2sar-perf
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - {}  # Allow all ingress traffic
+  egress:
+  - {}  # Allow all egress traffic
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: e2sar-receiver
+  namespace: e2sar-perf
+spec:
+  ttlSecondsAfterFinished: 100
+  template:
+    metadata:
+      labels:
+        app: e2sar-receiver
+      annotations:
+        kubernetes.io/ingress-bandwidth: "100M"
+        kubernetes.io/egress-bandwidth: "100M"
+    spec:
+      restartPolicy: Never
+      hostname: e2sar-receiver-0  # Static hostname for DNS resolution
+      subdomain: e2sar-receiver-svc  # Must match service name
+      nodeSelector:
+        kubernetes.io/hostname: wknode2
+      tolerations:
+      - key: "node.kubernetes.io/disk-pressure"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 3600
+      - key: "node.kubernetes.io/memory-pressure"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 3600
+      - key: "node.kubernetes.io/ephemeral-storage-pressure"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 3600
+      initContainers:
+      - name: init-volume
+        image: busybox:1.28
+        resources:
+          requests:
+            cpu: "10m"
+            memory: "16Mi"
+            ephemeral-storage: "50Mi"
+          limits:
+            cpu: "20m"
+            memory: "32Mi"
+            ephemeral-storage: "100Mi"
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          mkdir -p /tmp/e2sar-logs
+          chmod 777 /tmp/e2sar-logs
+          
+          # Create a directory for container image layers
+          mkdir -p /tmp/e2sar-container
+          chmod 777 /tmp/e2sar-container
+        volumeMounts:
+        - name: host-path
+          mountPath: /tmp
+        - name: tmp-storage
+          mountPath: /tmp/e2sar-container
+      volumes:
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: logs-pvc
+      - name: logs-fallback
+        emptyDir:
+          sizeLimit: 100Mi
+      - name: shared-logs
+        emptyDir:
+          sizeLimit: 50Mi
+      - name: host-path
+        hostPath:
+          path: /tmp
+      - name: tmp-storage
+        emptyDir:
+          sizeLimit: 1Gi
+      containers:
+      - name: receiver
+        image: jlabtsai/e2sar-container:latest
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+            ephemeral-storage: "100Mi"
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
+            ephemeral-storage: "500Mi"
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          # Run the receiver and tee the output to a log file
+          /app/entrypoint-receiver.sh 2>&1 | tee /shared-logs/receiver.log
+        env:
+        - name: IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: URI
+          value: "ejfat://useless@10.10.10.10:1234/lb/1?data=$(IP):19522&sync=192.168.77.7:1234"
+        - name: DURATION
+          value: "300"
+        - name: BUF_SIZE
+          value: "8192"
+        - name: PORT
+          value: "19522"
+        - name: THREADS
+          value: "1"
+        - name: DIRECT_MODE
+          value: "true"
+        volumeMounts:
+        - name: shared-logs
+          mountPath: /shared-logs
+        - name: tmp-storage
+          mountPath: /tmp/e2sar-container
+      - name: log-saver
+        image: busybox:1.28
+        resources:
+          requests:
+            cpu: "10m"
+            memory: "16Mi"
+            ephemeral-storage: "50Mi"
+          limits:
+            cpu: "20m"
+            memory: "32Mi"
+            ephemeral-storage: "100Mi"
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          # Wait for the receiver to finish
+          while [ ! -f /shared-logs/receiver.log ]; do
+            echo "Waiting for receiver log file..."
+            sleep 5
+          done
+          
+          # Check if PVC is available and writable
+          if [ -d /logs ] && touch /logs/test_write && rm /logs/test_write; then
+            # Copy the log file to the persistent volume
+            mkdir -p /logs/receiver
+            cp /shared-logs/receiver.log /logs/receiver/
+            echo "Receiver logs saved to persistent volume"
+            LOG_DIR="/logs"
+          else
+            # Copy to fallback volume
+            mkdir -p /logs-fallback/receiver
+            cp /shared-logs/receiver.log /logs-fallback/receiver/
+            echo "Receiver logs saved to fallback volume"
+            LOG_DIR="/logs-fallback"
+          fi
+          
+          # Keep the container running until the main container exits
+          while true; do
+            if [ ! -f /proc/1/status ]; then
+              echo "Main container exited, exiting log-saver"
+              break
+            fi
+            sleep 10
+            # Copy the latest logs
+            cp /shared-logs/receiver.log ${LOG_DIR}/receiver/
+          done
+        volumeMounts:
+        - name: shared-logs
+          mountPath: /shared-logs
+        - name: logs-volume
+          mountPath: /logs
+        - name: logs-fallback
+          mountPath: /logs-fallback
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: e2sar-sender
+  namespace: e2sar-perf
+spec:
+  ttlSecondsAfterFinished: 100
+  template:
+    metadata:
+      labels:
+        app: e2sar-sender
+      annotations:
+        kubernetes.io/ingress-bandwidth: "100M"
+        kubernetes.io/egress-bandwidth: "100M"
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/hostname: wknode1
+      tolerations:
+      - key: "node.kubernetes.io/disk-pressure"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 3600
+      - key: "node.kubernetes.io/memory-pressure"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 3600
+      - key: "node.kubernetes.io/ephemeral-storage-pressure"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 3600
+      initContainers:
+      - name: init-volume
+        image: busybox:1.28
+        resources:
+          requests:
+            cpu: "10m"
+            memory: "16Mi"
+            ephemeral-storage: "50Mi"
+          limits:
+            cpu: "20m"
+            memory: "32Mi"
+            ephemeral-storage: "100Mi"
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          mkdir -p /tmp/e2sar-logs
+          chmod 777 /tmp/e2sar-logs
+          
+          # Create a directory for container image layers
+          mkdir -p /tmp/e2sar-container
+          chmod 777 /tmp/e2sar-container
+        volumeMounts:
+        - name: host-path
+          mountPath: /tmp
+        - name: tmp-storage
+          mountPath: /tmp/e2sar-container
+      - name: wait-for-receiver
+        image: busybox:1.28
+        resources:
+          requests:
+            cpu: "10m"
+            memory: "16Mi"
+            ephemeral-storage: "50Mi"
+          limits:
+            cpu: "20m"
+            memory: "32Mi"
+            ephemeral-storage: "100Mi"
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          # Wait for the receiver service DNS to be available
+          RECEIVER_SVC="e2sar-receiver-svc.e2sar-perf.svc.cluster.local"
+          until nslookup $RECEIVER_SVC > /tmp/nslookup.out; do
+            echo "Waiting for receiver service DNS to be available..."
+            sleep 5
+          done
+          
+          # Extract the receiver IP from the nslookup output
+          RECEIVER_IP=$(grep "Address 1:" /tmp/nslookup.out | tail -n1 | awk '{print $3}')
+          echo "Resolved receiver service IP: $RECEIVER_IP"
+          
+          # Wait a bit to ensure the receiver is fully ready
+          sleep 5
+          
+          # Store the IP for the main container
+          echo "export RECEIVER_IP=$RECEIVER_IP" > /shared-data/receiver-ip.env
+          
+          # Print node information for verification
+          echo "Log viewer should be running on cpnode"
+          echo "Sender should be running on wknode1"
+          echo "Receiver should be running on wknode2"
+        volumeMounts:
+        - name: shared-data
+          mountPath: /shared-data
+      volumes:
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: logs-pvc
+      - name: logs-fallback
+        emptyDir:
+          sizeLimit: 100Mi
+      - name: shared-logs
+        emptyDir:
+          sizeLimit: 50Mi
+      - name: shared-data
+        emptyDir:
+          sizeLimit: 1Mi
+      - name: host-path
+        hostPath:
+          path: /tmp
+      - name: tmp-storage
+        emptyDir:
+          sizeLimit: 1Gi
+      containers:
+      - name: sender
+        image: jlabtsai/e2sar-container:latest
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+            ephemeral-storage: "100Mi"
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
+            ephemeral-storage: "500Mi"
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          # Source the receiver IP from the init container
+          source /shared-data/receiver-ip.env
+          echo "Using receiver IP: $RECEIVER_IP"
+          
+          export IP="0.0.0.0"
+          export URI="ejfat://useless@10.10.10.10:1234/lb/1?data=${RECEIVER_IP}:19522&sync=192.168.77.7:1234"
+          export MTU="512"
+          export RATE="0.1"
+          export LENGTH="512"
+          export NUM_EVENTS="500"
+          export BUF_SIZE="8192"
+          export DIRECT_MODE="true"
+          /app/entrypoint-sender.sh 2>&1 | tee /shared-logs/sender.log
+        volumeMounts:
+        - name: shared-logs
+          mountPath: /shared-logs
+        - name: shared-data
+          mountPath: /shared-data
+        - name: tmp-storage
+          mountPath: /tmp/e2sar-container
+      - name: log-saver
+        image: busybox:1.28
+        resources:
+          requests:
+            cpu: "10m"
+            memory: "16Mi"
+            ephemeral-storage: "50Mi"
+          limits:
+            cpu: "20m"
+            memory: "32Mi"
+            ephemeral-storage: "100Mi"
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          # Wait for the sender to finish
+          while [ ! -f /shared-logs/sender.log ]; do
+            echo "Waiting for sender log file..."
+            sleep 5
+          done
+          
+          # Check if PVC is available and writable
+          if [ -d /logs ] && touch /logs/test_write && rm /logs/test_write; then
+            # Copy the log file to the persistent volume
+            mkdir -p /logs/sender
+            cp /shared-logs/sender.log /logs/sender/
+            echo "Sender logs saved to persistent volume"
+            LOG_DIR="/logs"
+          else
+            # Copy to fallback volume
+            mkdir -p /logs-fallback/sender
+            cp /shared-logs/sender.log /logs-fallback/sender/
+            echo "Sender logs saved to fallback volume"
+            LOG_DIR="/logs-fallback"
+          fi
+          
+          # Keep the container running until the main container exits
+          while true; do
+            if [ ! -f /proc/1/status ]; then
+              echo "Main container exited, exiting log-saver"
+              break
+            fi
+            sleep 10
+            # Copy the latest logs
+            cp /shared-logs/sender.log ${LOG_DIR}/sender/
+          done
+        volumeMounts:
+        - name: shared-logs
+          mountPath: /shared-logs
+        - name: logs-volume
+          mountPath: /logs
+        - name: logs-fallback
+          mountPath: /logs-fallback
+        - name: tmp-storage
+          mountPath: /tmp/e2sar-container
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: e2sar-log-viewer
+  namespace: e2sar-perf
+spec:
+  ttlSecondsAfterFinished: 3600  # Keep for 1 hour instead of 7 days
+  template:
+    metadata:
+      labels:
+        app: e2sar-log-viewer
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/hostname: cpnode
+      tolerations:
+      - key: "node.kubernetes.io/disk-pressure"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 3600
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: "node.kubernetes.io/memory-pressure"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 3600
+      - key: "node.kubernetes.io/ephemeral-storage-pressure"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 3600
+      initContainers:
+      - name: init-volume
+        image: busybox:1.28
+        resources:
+          requests:
+            cpu: "10m"
+            memory: "16Mi"
+            ephemeral-storage: "50Mi"
+          limits:
+            cpu: "20m"
+            memory: "32Mi"
+            ephemeral-storage: "100Mi"
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          mkdir -p /tmp/e2sar-logs
+          chmod 777 /tmp/e2sar-logs
+          
+          # Create a directory for container image layers
+          mkdir -p /tmp/e2sar-container
+          chmod 777 /tmp/e2sar-container
+        volumeMounts:
+        - name: host-path
+          mountPath: /tmp
+        - name: tmp-storage
+          mountPath: /tmp/e2sar-container
+      volumes:
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: logs-pvc
+      - name: logs-fallback
+        emptyDir:
+          sizeLimit: 100Mi
+      - name: host-path
+        hostPath:
+          path: /tmp
+      - name: tmp-storage
+        emptyDir:
+          sizeLimit: 1Gi
+      containers:
+      - name: log-viewer
+        image: busybox:1.28
+        resources:
+          requests:
+            cpu: "10m"
+            memory: "16Mi"
+            ephemeral-storage: "50Mi"
+          limits:
+            cpu: "20m"
+            memory: "32Mi"
+            ephemeral-storage: "100Mi"
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "Waiting for logs to be available..."
+          
+          # Check if PVC is available and writable
+          if [ -d /logs ] && touch /logs/test_write && rm /logs/test_write; then
+            LOG_DIR="/logs"
+          else
+            LOG_DIR="/logs-fallback"
+          fi
+          
+          # Wait for the sender and receiver logs to be available
+          until [ -f ${LOG_DIR}/sender/sender.log ] && [ -f ${LOG_DIR}/receiver/receiver.log ]; do
+            echo "Waiting for log files in ${LOG_DIR}..."
+            sleep 10
+          done
+          
+          echo "Logs are available. You can view them with:"
+          echo "kubectl exec -it -n e2sar-perf $(hostname) -- cat ${LOG_DIR}/sender/sender.log"
+          echo "kubectl exec -it -n e2sar-perf $(hostname) -- cat ${LOG_DIR}/receiver/receiver.log"
+          
+          # Keep the pod running for 1 hour to allow log access
+          sleep 3600
+        volumeMounts:
+        - name: logs-volume
+          mountPath: /logs
+        - name: logs-fallback
+          mountPath: /logs-fallback
+        - name: tmp-storage
+          mountPath: /tmp/e2sar-container 

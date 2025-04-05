@@ -1,0 +1,26 @@
+apiVersion: kind.x-k8s.io/v1alpha4
+kind: Cluster
+name: e2sar-cluster
+networking:
+  ipFamily: ipv4
+  disableDefaultCNI: false
+  # podSubnet defines the IP range used for Pod networking (container-to-container communication)
+  podSubnet: "10.244.0.0/16"
+  # serviceSubnet defines the IP range used for Kubernetes Services (for service discovery)
+  serviceSubnet: "10.96.0.0/16"
+nodes:
+- role: control-plane
+- role: worker
+  kubeadmConfigPatches:
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "node=worker1"
+- role: worker
+  kubeadmConfigPatches:
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "node=worker2" 
