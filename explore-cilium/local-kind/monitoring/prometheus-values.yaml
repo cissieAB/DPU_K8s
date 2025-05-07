@@ -1,0 +1,16 @@
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelector: {}
+    serviceMonitorSelector: {}
+    retention: 15d
+    resources:
+      requests:
+        memory: 400Mi
+        cpu: 300m
+      limits:
+        memory: 1Gi
+        cpu: 500m
+    storageSpec:
+      emptyDir:
+        medium: Memory 

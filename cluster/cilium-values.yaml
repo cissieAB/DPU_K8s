@@ -1,0 +1,36 @@
+prometheus:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+  port: 9090
+
+metrics:
+  enabled:
+    - api
+    - controller
+    - datapath
+    - drop
+    - endpoint
+    - errors-warnings
+    - forwarding
+    - identity
+    - ipcache
+    - k8s-client
+    - kubernetes-events
+    - nodes
+    - policy
+    - process
+    - service
+    - signal
+    - workqueue
+
+hubble:
+  enabled: true
+  metrics:
+    enabled:
+      - dns:query;ignoreAAAA
+      - drop
+      - tcp
+      - flow
+      - icmp
+      - http 
