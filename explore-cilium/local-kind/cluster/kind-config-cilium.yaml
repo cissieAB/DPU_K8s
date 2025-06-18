@@ -2,9 +2,9 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: cilium-cluster
 networking:
-  disableDefaultCNI: true  # Disable the default CNI
   podSubnet: "10.244.0.0/16"
   serviceSubnet: "10.96.0.0/12"
+  disableDefaultCNI: true  # Disable default CNI to use Cilium
 nodes:
 - role: control-plane
   image: kindest/node:v1.29.2
@@ -15,4 +15,4 @@ nodes:
   image: kindest/node:v1.29.2
   extraMounts:
     - hostPath: /sys/fs/bpf
-      containerPath: /sys/fs/bpf
+      containerPath: /sys/fs/bpf 

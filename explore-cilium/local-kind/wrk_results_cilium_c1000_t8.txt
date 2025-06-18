@@ -1,0 +1,20 @@
+=== wrk Test Results with cilium CNI ===
+Test started at: Wed Jun 18 02:45:51 AM UTC 2025
+Server IP: 10.96.227.40
+Server Node: cilium-cluster-worker
+Client Node: cilium-cluster-worker2
+Test parameters:
+- Duration: 30s
+- Connections: 1000
+- Threads: 8
+----------------------------------------
+Running 30s test @ http://10.96.227.40
+  8 threads and 1000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    16.23ms   10.95ms 116.12ms   75.23%
+    Req/Sec     7.34k     1.45k   15.63k    72.24%
+  1743496 requests in 30.08s, 1.39GB read
+Requests/sec:  57965.77
+Transfer/sec:     47.15MB
+----------------------------------------
+Test completed at: Wed Jun 18 02:45:51 AM UTC 2025

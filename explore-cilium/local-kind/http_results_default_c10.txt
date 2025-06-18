@@ -1,0 +1,59 @@
+=== HTTP Test Results with default CNI ===
+Test started at: Tue Jun 17 09:38:18 PM UTC 2025
+Server IP: 10.96.226.207
+Server Node: default-cni-cluster-worker
+Client Node: default-cni-cluster-worker2
+Test parameters:
+- Duration: 30s
+- Total Requests: 1000
+- Concurrency: 10
+----------------------------------------
+Completed 15000 requests
+Completed 20000 requests
+Completed 25000 requests
+Completed 30000 requests
+Completed 35000 requests
+Completed 40000 requests
+Completed 45000 requests
+Completed 50000 requests
+Finished 50000 requests
+
+
+Server Software:        nginx/1.27.5
+Server Hostname:        10.96.226.207
+Server Port:            80
+
+Document Path:          /
+Document Length:        615 bytes
+
+Concurrency Level:      10
+Time taken for tests:   4.664 seconds
+Complete requests:      50000
+Failed requests:        0
+Total transferred:      42400000 bytes
+HTML transferred:       30750000 bytes
+Requests per second:    10720.05 [#/sec] (mean)
+Time per request:       0.933 [ms] (mean)
+Time per request:       0.093 [ms] (mean, across all concurrent requests)
+Transfer rate:          8877.54 [Kbytes/sec] received
+
+Connection Times (ms)
+              min  mean[+/-sd] median   max
+Connect:        0    0   0.1      0       1
+Processing:     0    1   0.2      1      12
+Waiting:        0    0   0.2      0      12
+Total:          0    1   0.2      1      13
+
+Percentage of the requests served within a certain time (ms)
+  50%      1
+  66%      1
+  75%      1
+  80%      1
+  90%      1
+  95%      1
+  98%      1
+  99%      1
+ 100%     13 (longest request)
+pod "http-test" deleted
+----------------------------------------
+Test completed at: Tue Jun 17 09:38:28 PM UTC 2025

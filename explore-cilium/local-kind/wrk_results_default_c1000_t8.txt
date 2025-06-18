@@ -1,0 +1,20 @@
+=== wrk Test Results with default CNI ===
+Test started at: Wed Jun 18 02:39:03 AM UTC 2025
+Server IP: 10.96.6.132
+Server Node: default-cni-cluster-worker
+Client Node: default-cni-cluster-worker2
+Test parameters:
+- Duration: 30s
+- Connections: 1000
+- Threads: 8
+----------------------------------------
+Running 30s test @ http://10.96.6.132
+  8 threads and 1000 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency    12.34ms    6.63ms  96.79ms   79.25%
+    Req/Sec    10.28k     1.13k   21.34k    74.26%
+  2447240 requests in 30.09s, 1.94GB read
+Requests/sec:  81318.61
+Transfer/sec:     66.15MB
+----------------------------------------
+Test completed at: Wed Jun 18 02:39:03 AM UTC 2025

@@ -1,0 +1,61 @@
+=== HTTP Test Results with cilium CNI ===
+Test started at: Tue Jun 17 09:37:08 PM UTC 2025
+Server IP: 10.96.154.101
+Server Node: cilium-cluster-worker
+Client Node: cilium-cluster-worker2
+Test parameters:
+- Duration: 30s
+- Total Requests: 1000
+- Concurrency: 10
+----------------------------------------
+Completed 5000 requests
+Completed 10000 requests
+Completed 15000 requests
+Completed 20000 requests
+Completed 25000 requests
+Completed 30000 requests
+Completed 35000 requests
+Completed 40000 requests
+Completed 45000 requests
+Completed 50000 requests
+Finished 50000 requests
+
+
+Server Software:        nginx/1.27.5
+Server Hostname:        10.96.154.101
+Server Port:            80
+
+Document Path:          /
+Document Length:        615 bytes
+
+Concurrency Level:      10
+Time taken for tests:   8.814 seconds
+Complete requests:      50000
+Failed requests:        0
+Total transferred:      42400000 bytes
+HTML transferred:       30750000 bytes
+Requests per second:    5672.90 [#/sec] (mean)
+Time per request:       1.763 [ms] (mean)
+Time per request:       0.176 [ms] (mean, across all concurrent requests)
+Transfer rate:          4697.87 [Kbytes/sec] received
+
+Connection Times (ms)
+              min  mean[+/-sd] median   max
+Connect:        0    1   0.2      1       5
+Processing:     0    1   0.5      1      17
+Waiting:        0    1   0.5      1      17
+Total:          0    2   0.5      2      18
+
+Percentage of the requests served within a certain time (ms)
+  50%      2
+  66%      2
+  75%      2
+  80%      2
+  90%      2
+  95%      2
+  98%      3
+  99%      4
+ 100%     18 (longest request)
+pod "http-test" deleted
+----------------------------------------
+Test completed at: Tue Jun 17 09:37:22 PM UTC 2025

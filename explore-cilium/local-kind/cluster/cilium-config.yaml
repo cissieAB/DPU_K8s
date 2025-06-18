@@ -18,7 +18,7 @@ data:
   enable-bpf-masquerade: "true"
   enable-ipv4-masquerade: "true"
   ipam: kubernetes
-  kube-proxy-replacement: "strict"
+  kube-proxy-replacement: strict
   tunnel-protocol: "vxlan"
   routing-mode: "tunnel"
   enable-endpoint-routes: "false"
@@ -54,4 +54,4 @@ data:
     enabled: true
     serviceMonitor:
       enabled: true
-    port: 9090 
+    port: 9962 
