@@ -1,7 +1,6 @@
 # CNI Performance Test Summary
 ## Cilium vs Default CNI (kindnet) Comparison
 
-**Test Date:** June 17-18, 2025  
 **Test Environment:** Kind cluster with 2 worker nodes + 1 control plane  
 **Cilium Version:** 1.15.3  
 
