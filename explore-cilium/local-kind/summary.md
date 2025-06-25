@@ -3,7 +3,6 @@
 
 **Test Date:** June 17-18, 2025  
 **Test Environment:** Kind cluster with 2 worker nodes + 1 control plane  
-**Kernel Version:** 5.15.0-140-generic  
 **Cilium Version:** 1.15.3  
 
 ---
@@ -19,7 +18,6 @@ This test demonstrates the deployment and execution of comprehensive network per
 - **Kubernetes Version**: v1.29.2
 - **Node Architecture**: 1 control-plane + 2 worker nodes
 - **Container Runtime**: Docker
-- **Host OS**: Linux 5.15.0-140-generic
 
 ### Node Architecture
 The test uses a 3-node Kubernetes cluster:
