@@ -11,14 +11,13 @@ The E2SAR performance test consists of:
 3. **Log Viewer Pod**: Provides access to logs after the tests complete
 
 The configuration uses persistent volumes to:
-- Share the receiver's IP address with the sender
 - Store logs from both sender and receiver for later analysis
+- Enable direct pod-to-pod communication for optimal performance testing
 
 ## Configuration Files
 
-- `e2sar-statefulset.yaml`: Original configuration using StatefulSets (not recommended)
-- `e2sar-jobs.yaml`: Improved configuration using Jobs with log persistence and shared volume for IP discovery
-- `e2sar-headless.yaml`: Alternative implementation using a headless service for IP discovery (recommended)
+- `e2sar-headless.yaml`: Implementation using a headless service for IP discovery (recommended)
+- `kind-config.yaml`: KinD cluster configuration for local testing
 
 ## Setting Up the KinD Cluster
 
@@ -61,11 +60,8 @@ until kubectl get namespace e2sar-perf --context kind-e2sar-cluster 2>&1 | grep 
   sleep 5
 done
 
-# Using the headless service approach for IP discovery (recommended)
+# Apply the headless service configuration
 kubectl apply -f e2sar-headless.yaml --context kind-e2sar-cluster
-
-# OR using the shared volume approach for IP discovery
-kubectl apply -f e2sar-jobs.yaml --context kind-e2sar-cluster
 
 # Check the status of the jobs
 kubectl get jobs -n e2sar-perf --context kind-e2sar-cluster
@@ -116,7 +112,7 @@ The log-viewer pod remains running for 7 days after test completion to allow acc
 
 ## Modifying the Configuration
 
-To modify the test parameters, edit the `e2sar-jobs.yaml` file and update the environment variables in the sender and receiver container specifications.
+To modify the test parameters, edit the `e2sar-headless.yaml` file and update the environment variables in the sender and receiver container specifications.
 
 For example, to increase the sending rate:
 
@@ -175,7 +171,7 @@ kubectl get service,endpoints -n e2sar-perf --context kind-e2sar-cluster
 
 ## Network Architecture
 
-The E2SAR test uses direct pod-to-pod communication without any load balancer in between. The sender pod communicates directly with the receiver pod using the receiver's pod IP address, which is shared via a persistent volume.
+The E2SAR test uses direct pod-to-pod communication without any load balancer in between. The sender pod communicates directly with the receiver pod using the receiver's pod IP address, which is discovered via Kubernetes DNS resolution.
 
 The traffic flows:
 ```
@@ -190,7 +186,7 @@ There are several ways to establish communication between pods in Kubernetes:
    - Uses the pod's IP address directly
    - Lowest latency and overhead
    - No service discovery or load balancing
-   - Requires manual handling of IP discovery (we use a shared volume)
+   - Requires IP discovery mechanism (we use DNS resolution)
    - Pod IPs are ephemeral and change when pods restart
 
 2. **ClusterIP Service**
@@ -213,7 +209,7 @@ There are several ways to establish communication between pods in Kubernetes:
          targetPort: 19522
      ```
 
-3. **Headless Service**
+3. **Headless Service (current implementation)**
    - Similar to ClusterIP but without a cluster IP (sets `clusterIP: None`)
    - DNS resolves directly to individual pod IPs rather than to a service IP
    - **No load balancer or proxy** in the data path - traffic goes directly to pods
@@ -250,81 +246,144 @@ For the E2SAR performance tests, we chose direct pod-to-pod communication becaus
 3. **Simplicity**: Direct connection better represents the actual network performance
 4. **Test Focus**: We're testing E2SAR performance, not Kubernetes service mechanisms
 
-We provide two implementations for direct pod-to-pod communication:
-
-1. **Shared Volume Approach (`e2sar-jobs.yaml`)**:
-   - IP discovery via shared persistent volume
-   - Manual but completely transparent to network
-   - No DNS resolution overhead
-   - Requires an additional PVC for IP sharing
-
-2. **Headless Service Approach (`e2sar-headless.yaml`) - Recommended**:
-   - IP discovery via Kubernetes DNS
-   - More standard Kubernetes approach
-   - Minimal DNS resolution overhead (only during connection setup)
-   - Uses standard Kubernetes service discovery
-   - No additional PVC required for IP sharing
-   - More resilient to pod restarts
-
-Both approaches result in the same direct pod-to-pod communication once the connection is established.
-
 ## Implementation Details
 
 ### Headless Service Implementation
 
-The headless service implementation (`e2sar-headless.yaml`) uses the following components:
+The headless service implementation (`e2sar-headless.yaml`) achieves direct pod-to-pod communication through a sophisticated multi-step process:
 
-1. **Headless Service**:
-   ```yaml
-   apiVersion: v1
-   kind: Service
-   metadata:
-     name: e2sar-receiver-svc
-     namespace: e2sar-perf
-   spec:
-     clusterIP: None  # This makes it a headless service
-     selector:
-       app: e2sar-receiver
-     ports:
-     - port: 19522
-       targetPort: 19522
-   ```
+#### 1. **Headless Service Definition**
+The core of the implementation is a headless service that provides DNS resolution without load balancing:
 
-2. **Init Container for DNS Resolution**:
-   ```yaml
-   initContainers:
-   - name: wait-for-receiver
-     image: busybox:1.28
-     command: ["/bin/sh", "-c"]
-     args:
-     - |
-       # Wait for the receiver service DNS to be available
-       RECEIVER_SVC="e2sar-receiver-svc.e2sar-perf.svc.cluster.local"
-       until nslookup $RECEIVER_SVC > /tmp/nslookup.out; do
-         echo "Waiting for receiver service DNS to be available..."
-         sleep 5
-       done
-       
-       # Extract the receiver IP from the nslookup output
-       RECEIVER_IP=$(grep "Address 1:" /tmp/nslookup.out | tail -n1 | awk '{print $3}')
-       echo "Resolved receiver service IP: $RECEIVER_IP"
-       
-       # Store the IP for the main container
-       echo "export RECEIVER_IP=$RECEIVER_IP" > /shared-data/receiver-ip.env
-   ```
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: e2sar-receiver-svc
+  namespace: e2sar-perf
+spec:
+  clusterIP: None  # This makes it a headless service
+  selector:
+    app: e2sar-receiver
+  ports:
+  - port: 19522
+    targetPort: 19522
+    protocol: TCP
+    name: tcp
+```
 
-3. **Shared Volume for IP Passing**:
-   ```yaml
-   volumes:
-   - name: shared-data
-     emptyDir: {}
-   ```
+**Key Points:**
+- `clusterIP: None` makes this a headless service
+- DNS resolution returns actual pod IPs instead of a virtual service IP
+- No load balancer or kube-proxy involvement in the data path
 
-This approach uses standard Kubernetes DNS resolution to discover the receiver's IP address, which is then passed to the sender container via a shared emptyDir volume.
+#### 2. **DNS Resolution in Init Container**
+The sender pod uses an init container to discover the receiver's IP address:
+
+```yaml
+initContainers:
+- name: wait-for-receiver
+  image: busybox:1.28
+  command: ["/bin/sh", "-c"]
+  args:
+  - |
+    # Wait for the receiver service DNS to be available
+    RECEIVER_SVC="e2sar-receiver-svc.e2sar-perf.svc.cluster.local"
+    until nslookup $RECEIVER_SVC > /tmp/nslookup.out; do
+      echo "Waiting for receiver service DNS to be available..."
+      sleep 5
+    done
+    
+    # Extract the receiver IP from the nslookup output
+    RECEIVER_IP=$(grep "Address 1:" /tmp/nslookup.out | tail -n1 | awk '{print $3}')
+    echo "Resolved receiver service IP: $RECEIVER_IP"
+    
+    # Wait a bit to ensure the receiver is fully ready
+    sleep 5
+    
+    # Store the IP for the main container
+    echo "export RECEIVER_IP=$RECEIVER_IP" > /shared-data/receiver-ip.env
+  volumeMounts:
+  - name: shared-data
+    mountPath: /shared-data
+```
+
+**Process Flow:**
+1. **DNS Query**: Uses `nslookup` to resolve the headless service name
+2. **IP Extraction**: Parses the nslookup output to extract the actual pod IP
+3. **IP Storage**: Saves the IP to a shared volume for the main container
+4. **Race Condition Prevention**: Includes delays to ensure receiver readiness
+
+#### 3. **Direct Pod-to-Pod Communication**
+The sender container establishes a direct connection using the discovered IP:
+
+```yaml
+containers:
+- name: sender
+  image: jlabtsai/e2sar-container:latest
+  command: ["/bin/bash", "-c"]
+  args:
+  - |
+    # Source the receiver IP from the init container
+    source /shared-data/receiver-ip.env
+    echo "Using receiver IP: $RECEIVER_IP"
+    
+    export IP="0.0.0.0"
+    export URI="ejfat://useless@10.10.10.10:1234/lb/1?data=${RECEIVER_IP}:19522&sync=192.168.77.7:1234"
+    export MTU="512"
+    export RATE="0.1"
+    export LENGTH="512"
+    export NUM_EVENTS="10000"
+    export BUF_SIZE="32768"
+    export DIRECT_MODE="true"
+    /app/entrypoint-sender.sh 2>&1 | tee /shared-logs/sender.log
+  volumeMounts:
+  - name: shared-logs
+    mountPath: /shared-logs
+  - name: shared-data
+    mountPath: /shared-data
+```
+
+**Key Features:**
+- **Direct Connection**: Uses `${RECEIVER_IP}` directly in the URI
+- **No Intermediary**: No service IP, load balancer, or proxy involved
+- **Performance Optimized**: Minimal network overhead
+
+#### 4. **Shared Volume for Inter-Container Communication**
+The implementation uses an emptyDir volume to pass data between containers:
+
+```yaml
+volumes:
+- name: shared-data
+  emptyDir: {}
+```
+
+This volume allows the init container to write the discovered IP and the main container to read it.
+
+### Complete Communication Flow
+
+The entire process follows this sequence:
+
+1. **Service Creation**: Headless service is created with `clusterIP: None`
+2. **Receiver Pod Start**: Receiver pod starts and gets assigned a pod IP
+3. **DNS Registration**: Kubernetes DNS registers the pod IP for the headless service
+4. **Sender Init**: Init container resolves DNS to discover receiver's pod IP
+5. **IP Discovery**: `nslookup` returns the actual pod IP address
+6. **IP Storage**: IP is saved to shared volume
+7. **Direct Connection**: Sender connects directly to receiver's pod IP
+8. **Data Transfer**: E2SAR performance testing begins with direct pod-to-pod communication
+
+### Why This Achieves True Direct Pod-to-Pod Communication
+
+1. **No Load Balancer**: `clusterIP: None` eliminates the service IP layer
+2. **No kube-proxy**: Traffic doesn't traverse iptables rules for service routing
+3. **Direct DNS Resolution**: DNS resolves directly to pod IP, not service IP
+4. **Minimal Overhead**: Only DNS resolution overhead during connection setup
+5. **Deterministic Path**: Consistent network path for all data packets
 
 ### Log Persistence
 
-Both implementations use a persistent volume to store logs from the sender and receiver pods. This allows you to access the logs even after the pods have completed their tasks.
+The implementation uses a persistent volume to store logs from the sender and receiver pods. This allows you to access the logs even after the pods have completed their tasks.
 
 The log-viewer pod mounts the same persistent volume and provides access to the logs for 7 days after test completion.
 
