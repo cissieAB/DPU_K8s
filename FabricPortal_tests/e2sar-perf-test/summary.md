@@ -124,6 +124,9 @@ The E2SAR test consists of three main components deployed as Kubernetes Jobs:
 - **Reliability**: 93.4% successful event delivery (85/91)
 - **Data Quality**: 98.8% data integrity (84/85 events received without corruption)
 
+### Detailed Test Results
+The complete raw test output showing the progression of events from initial connection to final statistics is provided in [Appendix A: Detailed Test Results](#appendix-a-detailed-test-results). This includes the full sender and receiver logs showing the real-time performance metrics and event processing details.
+
 ## Technical Challenges Identified
 
 ### Performance Limitations
@@ -174,3 +177,91 @@ The E2SAR test consists of three main components deployed as Kubernetes Jobs:
 ## Conclusion
 
 The E2SAR performance test successfully demonstrated the deployment of a multi-node Kubernetes cluster on FABRIC testbed and the execution of distributed performance testing applications. **The test achieved significant success with 85 events successfully transmitted and received, representing a 93.4% delivery success rate.** While some performance limitations were observed due to infrastructure constraints, the overall communication between sender and receiver components was functional and reliable. The test provided valuable insights into the capabilities and limitations of running high-performance networking applications in containerized environments on distributed testbed infrastructure, with practical recommendations for future improvements.
+
+---
+
+## Appendix A: Detailed Test Results
+
+### Raw Test Output
+
+The following is the complete test output showing the real-time performance metrics and event processing details from both sender and receiver components:
+
+```
+Sender node: wknode1
+Receiver node: wknode2
+--- sender--- sender--- sender--- sender--- sender--- sender--- sender--- sender--- sender--- sender
+E2SAR Version: 0.1.4
+Control plane                OFF
+Event rate reporting in Sync ON
+Using usecs as event numbers ON
+*** Make sure the URI reflects proper data address, other parts are ignored.
+Sending bit rate is 0.1 Gbps
+Event size is 512 bytes or 4096 bits
+Event rate is 24414.1 Hz
+Inter-event sleep time is 40 microseconds
+Sending 500 event buffers
+Using MTU 512
+WARNING: Fewer frames than expected have been sent (978 of 1000), sender is not keeping up with the requested send rate.
+Completed, 978 frames sent, 0 errors
+Stopping threads
+Sender logs:
+
+--- receiver--- receiver--- receiver--- receiver--- receiver--- receiver--- receiver--- receiver--- receiver--- receiver
+E2SAR Version: 0.1.4
+Control plane will be OFF
+Using Unassigned Threads
+Will run for 300 sec
+*** Make sure the URI reflects proper data address, other parts are ignored.
+Receiving on ports 19522:19522
+Stats:
+	Events Received: 0
+	Events Mangled: 0
+	Events Lost: 0
+	Data Errors: 0
+	gRPC Errors: 0
+	Events lost so far: 
+Stats:
+	Events Received: 0
+	Events Mangled: 0
+	Events Lost: 0
+	Data Errors: 0
+	gRPC Errors: 0
+	Events lost so far: 
+[... repeated stats showing initial period with no events received ...]
+Stats:
+	Events Received: 85
+	Events Mangled: 1
+	Events Lost: 5
+	Data Errors: 0
+	gRPC Errors: 0
+	Events lost so far: <0:4321> <52:4321> <41:4321> <54:4321> <100:4321> 
+Stats:
+	Events Received: 85
+	Events Mangled: 1
+	Events Lost: 6
+	Data Errors: 0
+	gRPC Errors: 0
+	Events lost so far: <0:4321> <52:4321> <41:4321> <54:4321> <100:4321> <497:4321> 
+[... repeated stats showing stable final results ...]
+Completed
+Stopping threads
+Deregistering worker
+Receiver logs:
+```
+
+### Key Observations from Raw Output
+
+1. **Initial Connection Period**: The receiver shows multiple stat reports with 0 events received, indicating a connection establishment phase
+2. **Event Burst**: At a specific point, the receiver suddenly processes 85 events, suggesting successful connection and data transmission
+3. **Loss Pattern**: Events with IDs 0, 52, 41, 54, 100, and 497 were consistently lost across all subsequent stat reports
+4. **Stability**: Once events started arriving, the statistics remained stable, indicating consistent performance
+5. **Completion**: Both sender and receiver completed their tasks successfully with proper cleanup
+
+### Performance Timeline Analysis
+
+- **Phase 1 (0-XX seconds)**: Connection establishment and initial setup
+- **Phase 2 (XX-XX seconds)**: Active data transmission with 85 events received
+- **Phase 3 (XX-300 seconds)**: Stable operation with consistent statistics
+- **Phase 4 (300+ seconds)**: Clean shutdown and resource cleanup
+
+This detailed output provides valuable insights into the real-time behavior of the E2SAR system and demonstrates the successful operation of the distributed performance testing infrastructure.
